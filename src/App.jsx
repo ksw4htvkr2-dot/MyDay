@@ -142,18 +142,34 @@ Antworte NUR mit dem JSON, nichts anderes.`;
       const text = data.content?.[0]?.text || "{}";
       const clean = text.replace(/```json|```/g,"").trim();
       const parsed = JSON.parse(clean);
-      // Apply changes
-      if (parsed.water) setHabitValues(p => ({...p, water: Math.min(8, parsed.water)}));
-      if (parsed.sleep) setHabitValues(p => ({...p, sleep: parsed.sleep}));
-      if (parsed.steps) setHabitValues(p => ({...p, steps: parsed.steps}));
-      if (parsed.reading) setHabitValues(p => ({...p, reading: parsed.reading}));
-      if (parsed.meditation) setHabitValues(p => ({...p, meditation: parsed.meditation}));
+      // Apply changes - use != null to handle 0 values correctly
+      if (parsed.water != null && parsed.water > 0) setHabitValues(p => ({...p, water: Math.min(8, parsed.water)}));
+      if (parsed.sleep != null && parsed.sleep > 0) setHabitValues(p => ({...p, sleep: parsed.sleep}));
+      if (parsed.steps != null && parsed.steps > 0) setHabitValues(p => ({...p, steps: parsed.steps}));
+      if (parsed.reading != null && parsed.reading > 0) setHabitValues(p => ({...p, reading: parsed.reading}));
+      if (parsed.meditation != null && parsed.meditation > 0) setHabitValues(p => ({...p, meditation: parsed.meditation}));
       if (parsed.mood) setMood(parsed.mood);
-      if (parsed.energy) setEnergy(parsed.energy);
+      if (parsed.energy != null && parsed.energy > 0) setEnergy(parsed.energy);
       if (parsed.workout) { setWorkoutDone(parsed.workout); setWorkoutDuration(parsed.workoutDuration || ""); }
       if (parsed.todos?.length) setTodos(p => [...p, ...parsed.todos.map((t,i) => ({id:Date.now()+i, text:t, done:false, time:"", priority:"medium"}))]);
       if (parsed.meals) setMeals(p => ({...p, ...parsed.meals}));
-      setAiHistory(prev => [...prev, {role:"assistant", text:"✅ " + (parsed.summary || "Alles eingetragen!")}]);
+
+      // Show what was updated
+      const updates = [];
+      if (parsed.water > 0) updates.push(parsed.water + " Gläser Wasser 💧");
+      if (parsed.sleep > 0) updates.push(parsed.sleep + "h Schlaf 😴");
+      if (parsed.steps > 0) updates.push(parsed.steps + "km Schritte 👟");
+      if (parsed.reading > 0) updates.push(parsed.reading + "min Lesen 📚");
+      if (parsed.meditation > 0) updates.push(parsed.meditation + "min Meditation 🧘");
+      if (parsed.mood) updates.push("Stimmung gesetzt 😊");
+      if (parsed.energy > 0) updates.push("Energie: " + parsed.energy + "/5 ⚡");
+      if (parsed.workout) updates.push("Sport: " + parsed.workout + " 🏋️");
+      if (parsed.todos?.length) updates.push(parsed.todos.length + " To-Dos hinzugefügt ✅");
+
+      const summary = parsed.summary || ("Eingetragen:
+" + updates.join("
+"));
+      setAiHistory(prev => [...prev, {role:"assistant", text:"✅ " + summary}]);
     } catch(e) {
       setAiHistory(prev => [...prev, {role:"assistant", text:"Sorry, da ist etwas schiefgelaufen. Versuch es nochmal! 🙏"}]);
     }

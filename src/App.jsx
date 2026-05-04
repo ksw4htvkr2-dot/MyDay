@@ -166,9 +166,7 @@ Antworte NUR mit dem JSON, nichts anderes.`;
       if (parsed.workout) updates.push("Sport: " + parsed.workout + " 🏋️");
       if (parsed.todos?.length) updates.push(parsed.todos.length + " To-Dos hinzugefügt ✅");
 
-      const summary = parsed.summary || ("Eingetragen:
-" + updates.join("
-"));
+      const summary = parsed.summary || ("Eingetragen: " + updates.join(", "));
       setAiHistory(prev => [...prev, {role:"assistant", text:"✅ " + summary}]);
     } catch(e) {
       setAiHistory(prev => [...prev, {role:"assistant", text:"Sorry, da ist etwas schiefgelaufen. Versuch es nochmal! 🙏"}]);

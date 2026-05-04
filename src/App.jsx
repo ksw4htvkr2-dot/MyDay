@@ -128,7 +128,7 @@ Analysiere den Text und extrahiere folgende Daten als JSON:
   "summary": kurze freundliche deutsche Zusammenfassung was du eingetragen hast (1-2 Sätze)
 }
 Antworte NUR mit dem JSON, nichts anderes.`;
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/ai", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({

@@ -98,6 +98,68 @@ export default function App() {
   const [streak, setStreak] = useState(() => load("streak", 7));
   const [showAddTodo, setShowAddTodo] = useState(false);
   const [showAddNote, setShowAddNote] = useState(false);
+  const [aiMsg, setAiMsg] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiHistory, setAiHistory] = useState([
+    {role:"assistant", text:"Hey! 👋 Erzähl mir wie dein Tag war – ich fülle alles automatisch aus!\n\nBeispiel: \"Habe 3 Gläser Wasser getrunken, bin 5km gelaufen und mir geht es super!\""}
+  ]);
+
+  const sendToAI = async () => {
+    if (!aiMsg.trim() || aiLoading) return;
+    const userMsg = aiMsg.trim();
+    setAiMsg("");
+    setAiHistory(prev => [...prev, {role:"user", text:userMsg}]);
+    setAiLoading(true);
+    try {
+      const systemPrompt = `Du bist ein persönlicher Tagesplaner-Assistent. Der Nutzer beschreibt seinen Tag auf Deutsch.
+Analysiere den Text und extrahiere folgende Daten als JSON:
+{
+  "water": Anzahl Gläser Wasser (Zahl, 0-8),
+  "sleep": Stunden Schlaf (Zahl),
+  "steps": Schritte in km (Zahl),
+  "reading": Minuten Lesen (Zahl),
+  "meditation": Minuten Meditation (Zahl),
+  "mood": eine von: "great","good","okay","bad","awful",
+  "energy": Energie 1-5 (Zahl),
+  "workout": eine von: "run","gym","bike","swim","yoga","walk","other" oder null,
+  "workoutDuration": Dauer als Text z.B. "5km / 30min" oder "",
+  "todos": Array von neuen Aufgaben als Strings,
+  "meals": {"breakfast":"...","lunch":"...","dinner":"...","snack":"..."} nur wenn erwähnt,
+  "summary": kurze freundliche deutsche Zusammenfassung was du eingetragen hast (1-2 Sätze)
+}
+Antworte NUR mit dem JSON, nichts anderes.`;
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 500,
+          system: systemPrompt,
+          messages: [{role:"user", content:userMsg}]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.[0]?.text || "{}";
+      const clean = text.replace(/```json|```/g,"").trim();
+      const parsed = JSON.parse(clean);
+      // Apply changes
+      if (parsed.water) setHabitValues(p => ({...p, water: Math.min(8, parsed.water)}));
+      if (parsed.sleep) setHabitValues(p => ({...p, sleep: parsed.sleep}));
+      if (parsed.steps) setHabitValues(p => ({...p, steps: parsed.steps}));
+      if (parsed.reading) setHabitValues(p => ({...p, reading: parsed.reading}));
+      if (parsed.meditation) setHabitValues(p => ({...p, meditation: parsed.meditation}));
+      if (parsed.mood) setMood(parsed.mood);
+      if (parsed.energy) setEnergy(parsed.energy);
+      if (parsed.workout) { setWorkoutDone(parsed.workout); setWorkoutDuration(parsed.workoutDuration || ""); }
+      if (parsed.todos?.length) setTodos(p => [...p, ...parsed.todos.map((t,i) => ({id:Date.now()+i, text:t, done:false, time:"", priority:"medium"}))]);
+      if (parsed.meals) setMeals(p => ({...p, ...parsed.meals}));
+      setAiHistory(prev => [...prev, {role:"assistant", text:"✅ " + (parsed.summary || "Alles eingetragen!")}]);
+    } catch(e) {
+      setAiHistory(prev => [...prev, {role:"assistant", text:"Sorry, da ist etwas schiefgelaufen. Versuch es nochmal! 🙏"}]);
+    }
+    setAiLoading(false);
+  };
+
 
   // Auto-save everything
   useEffect(() => { save(`mood-${todayKey}`, mood); }, [mood]);
@@ -171,7 +233,7 @@ export default function App() {
           </div>
           {/* Tabs */}
           <div style={{display:"flex",overflowX:"auto"}}>
-            {[{id:"today",label:"Heute"},{id:"habits",label:"Habits"},{id:"workout",label:"Sport"},{id:"food",label:"Essen"},{id:"notes",label:"Notizen"}].map(t=>(
+            {[{id:"today",label:"Heute"},{id:"habits",label:"Habits"},{id:"workout",label:"Sport"},{id:"food",label:"Essen"},{id:"notes",label:"Notizen"},{id:"ai",label:"🤖 KI"}].map(t=>(
               <button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"10px 14px",border:"none",background:"transparent",fontFamily:"Nunito,sans-serif",fontWeight:700,fontSize:12,cursor:"pointer",color:tab===t.id?"#1a1a1a":"#bbb",borderBottom:tab===t.id?"2.5px solid #1a1a1a":"2.5px solid transparent",whiteSpace:"nowrap",transition:"all 0.2s"}}>
                 {t.label}
               </button>
@@ -431,6 +493,60 @@ export default function App() {
         )}
       </main>
 
+      {/* AI TAB */}
+      {tab==="ai"&&(
+        <div className="fu" style={{display:"flex",flexDirection:"column",height:"calc(100vh - 180px)"}}>
+          <div style={{marginBottom:16}}>
+            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:800,marginBottom:4}}>KI-Assistent 🤖</h2>
+            <p style={{fontSize:12,color:"#aaa"}}>Erzähl mir deinen Tag – ich fülle alles aus!</p>
+          </div>
+          {/* Chat history */}
+          <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:10,marginBottom:14,WebkitOverflowScrolling:"touch"}}>
+            {aiHistory.map((msg,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
+                <div style={{maxWidth:"85%",padding:"12px 16px",borderRadius:msg.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",background:msg.role==="user"?"#1a1a1a":"white",color:msg.role==="user"?"white":"#1a1a1a",fontSize:13,lineHeight:1.6,fontWeight:500,boxShadow:"0 1px 8px rgba(0,0,0,0.06)",whiteSpace:"pre-wrap"}}>
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+            {aiLoading&&(
+              <div style={{display:"flex",justifyContent:"flex-start"}}>
+                <div style={{padding:"12px 16px",borderRadius:"18px 18px 18px 4px",background:"white",boxShadow:"0 1px 8px rgba(0,0,0,0.06)",fontSize:13,color:"#aaa"}}>
+                  ⏳ Analysiere deinen Tag…
+                </div>
+              </div>
+            )}
+          </div>
+          {/* Input */}
+          <div style={{background:"white",borderRadius:20,padding:"12px 14px",boxShadow:"0 1px 8px rgba(0,0,0,0.06)",display:"flex",gap:10,alignItems:"flex-end",position:"sticky",bottom:90}}>
+            <textarea
+              value={aiMsg}
+              onChange={e=>setAiMsg(e.target.value)}
+              placeholder="z.B. Habe 3 Gläser Wasser getrunken, bin 5km gelaufen..."
+              rows={3}
+              style={{flex:1,border:"none",background:"transparent",fontSize:13,resize:"none",outline:"none",color:"#1a1a1a",fontFamily:"Nunito,sans-serif",lineHeight:1.5}}
+              onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendToAI();}}}
+            />
+            <button onClick={sendToAI} disabled={aiLoading||!aiMsg.trim()} style={{width:40,height:40,borderRadius:"50%",background:aiMsg.trim()&&!aiLoading?"#1a1a1a":"#f0f0f0",border:"none",color:aiMsg.trim()&&!aiLoading?"white":"#ccc",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.2s"}}>
+              ↑
+            </button>
+          </div>
+          {/* Quick examples */}
+          <div style={{marginTop:10,display:"flex",gap:6,flexWrap:"wrap"}}>
+            {[
+              "Habe 8 Gläser Wasser getrunken",
+              "Bin 5km gelaufen, 30 Minuten",
+              "7h geschlafen, Energie ist hoch",
+              "Mir geht es heute super!",
+            ].map((ex,i)=>(
+              <button key={i} onClick={()=>setAiMsg(ex)} style={{padding:"6px 12px",background:"white",border:"1.5px solid #e5e5e5",borderRadius:20,fontSize:11,fontWeight:600,color:"#888",cursor:"pointer",fontFamily:"Nunito,sans-serif"}}>
+                {ex}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* BOTTOM NAV */}
       <nav style={{position:"fixed",bottom:0,left:0,right:0,background:"white",borderTop:"1px solid #f0f0f0",display:"flex",justifyContent:"space-around",padding:"10px 0 20px",zIndex:100,boxShadow:"0 -4px 20px rgba(0,0,0,0.06)"}}>
         {[
@@ -439,6 +555,7 @@ export default function App() {
           {id:"workout",icon:"🏋️",label:"Sport"},
           {id:"food",icon:"🥗",label:"Essen"},
           {id:"notes",icon:"📝",label:"Notizen"},
+          {id:"ai",icon:"🤖",label:"KI"},
         ].map(item=>(
           <button key={item.id} onClick={()=>setTab(item.id)} style={{background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,fontFamily:"Nunito,sans-serif",minWidth:55}}>
             <span style={{fontSize:20,filter:tab===item.id?"none":"grayscale(1) opacity(0.35)"}}>{item.icon}</span>

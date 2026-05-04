@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 
 const HABITS = [
   { id:"water", icon:"💧", label:"Wasser", unit:"Gläser", goal:8, color:"#3b82f6" },
